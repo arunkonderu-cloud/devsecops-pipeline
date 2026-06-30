@@ -1,0 +1,5 @@
+# Least-privilege RBAC roles
+# No cluster-admin bindings permitted.
+# cluster-admin is never granted to service accounts.
+# To add access: open a PR with documented justification.
+# The pipeline validates no cluster-admin bindings exist on every merge.

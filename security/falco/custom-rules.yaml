@@ -1,0 +1,44 @@
+- rule: Container reading AWS credential files
+  desc: Process reading AWS credentials. Legitimate code uses IAM roles not file reads.
+  condition: spawned_process and container and fd.name startswith "/root/.aws"
+  output: Credential file read (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: CRITICAL
+  tags: [credential_access, aws]
+
+- rule: Privilege escalation attempt
+  desc: su or sudo in container. Containers run as fixed non-root UID.
+  condition: spawned_process and container and proc.name in (su, sudo, newgrp)
+  output: Privilege escalation (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: CRITICAL
+  tags: [privilege_escalation]
+
+- rule: Write to sensitive host path
+  desc: Container writing to /etc or /bin. Indicates container escape attempt.
+  condition: open_write and container and fd.name startswith /etc
+  output: Write to sensitive path (user=%user.name file=%fd.name container=%container.name)
+  priority: CRITICAL
+  tags: [container_escape]
+
+- rule: Binary from tmp directory
+  desc: Executable from /tmp. Malware downloads to /tmp and executes there.
+  condition: spawned_process and container and proc.exepath startswith /tmp
+  output: Binary from temp dir (command=%proc.cmdline container=%container.name)
+  priority: CRITICAL
+  tags: [malware]
+
+- rule: Package manager in production container
+  desc: apt or pip in running container. Production containers must be immutable.
+  condition: spawned_process and container and proc.name in (apt, apt-get, yum, pip, pip3, npm)
+  output: Package manager in container (command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  tags: [supply_chain, immutability]
+
+- rule: Service account token read by unexpected process
+  desc: Shell reading SA token directly. Legitimate clients use the SDK.
+  condition: >
+    open_read and
+    fd.name = "/var/run/secrets/kubernetes.io/serviceaccount/token" and
+    not proc.name in (java, python, python3, node, ruby, kubectl)
+  output: SA token read by unexpected process (process=%proc.name container=%container.name)
+  priority: HIGH
+  tags: [credential_access, lateral_movement]
