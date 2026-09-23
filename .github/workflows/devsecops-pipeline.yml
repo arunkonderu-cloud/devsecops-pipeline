@@ -67,7 +67,6 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom.json
           retention-days: 90
-
   kubernetes-security-validation:
     name: Gate 4 - Kubernetes Security Validation
     runs-on: ubuntu-latest
@@ -78,12 +77,21 @@ jobs:
         run: test -f kubernetes/network-policies/default-deny.yaml && echo "Present" || exit 1
       - name: Check no cluster-admin bindings
         run: |
-          if grep -r "cluster-admin" kubernetes/rbac/ 2>/dev/null; then
-            echo "cluster-admin binding detected"
-            exit 1
-          fi
-          echo "RBAC clean"
-
+          pip install --quiet pyyaml
+          python3 - <<'EOF'
+          import glob, sys, yaml
+          bad = []
+          for path in glob.glob("kubernetes/**/*.y*ml", recursive=True):
+              with open(path) as f:
+                  for doc in yaml.safe_load_all(f):
+                      if not isinstance(doc, dict):
+                          continue
+                      if doc.get("kind") in ("ClusterRoleBinding", "RoleBinding") and (doc.get("roleRef") or {}).get("name") == "cluster-admin":
+                          bad.append(f'{path}: {doc["kind"]} {(doc.get("metadata") or {}).get("name")}')
+          if bad:
+              print("cluster-admin bindings detected:"); print("\n".join(bad)); sys.exit(1)
+          print("RBAC clean: no bindings to cluster-admin")
+          EOF
   audit-trail:
     name: Gate 5 - Audit Trail
     runs-on: ubuntu-latest
